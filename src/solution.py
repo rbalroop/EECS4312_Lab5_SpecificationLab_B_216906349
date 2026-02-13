@@ -56,14 +56,18 @@ def is_allocation_feasible(
     total_requests = build_total_request(requests)
     for key in total_requests:
         if key not in resources or total_requests[key] > resources[key]:
-            flag = False
+            return False
     
-    return flag
+    if not is_at_least_one_resource_unallocated(resources, total_requests):
+        return False
+    return True
             
-    
-    
-    # TODO: Implement this function
-    # raise NotImplementedError("suggest_slots function has not been implemented yet")
+def is_at_least_one_resource_unallocated(resources, total_requests):
+    # Final feasibility check: at least one resource in each requested resource type must have some capacity left after allocation
+    for key in resources:
+        if not resources[key] - total_requests.get(key, 0) > 0:
+            return False
+    return True
 
 def confirm_type_of_key_and_value(dictionary, expected_key_type, expected_value_type):
     for key in dictionary:
