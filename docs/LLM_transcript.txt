@@ -319,3 +319,204 @@ Your test fails because you don’t raise ValueError for malformed inputs.
 Also: don’t use Number in isinstance; use (int, float).
 
 If you paste the top of tests/test_solution.py (especially what it expects for invalid resources/requests), I can match the exact raising/returning behavior to every test.
+
+Prompt 3:
+How strong is this code against bugs
+
+"""
+Stub file for the is allocation feasible exercise.
+
+Implement the function `is_allocation_feasible` to  Determine whether a set of resource requests can be satisfied 
+given limited capacities. Take int account any possible constraints. See the lab handout
+for full requirements.
+"""
+    
+from typing import Dict, List, Union
+
+Number = Union[int, float]
+
+
+def is_allocation_feasible(
+    resources: Dict[str, Number],
+    requests: List[Dict[str, Number]]
+) -> bool:
+    """
+    Determine whether a set of resource requests can be satisfied given limited capacities.
+
+    Args:
+        resources : Dict[str, Number], Mapping from resource name to total available capacity.
+        requests : List[Dict[str, Number]], List of requests. Each request is a mapping from resource name to the amount required.
+
+    Returns:
+        True if the allocation is feasible, False otherwise.
+
+    """
+    flag = True
+    for i in range(len(requests)):
+        if requests[i] is None or not isinstance(requests[i], dict):
+            # Tests if the request is None or not a dictionary
+            raise ValueError("Invalid request at index {}: must be a non-null dictionary".format(i))
+        if not confirm_type_of_key_and_value(requests[i], str, Number):
+            # Tests if the keys and values in the request are of the correct type
+            raise ValueError("Invalid type in requests list at index {}".format(i))
+        vals = requests[i].values()
+        if any(v is None or v < 0 for v in vals):
+            # Tests if any value in the request is None or not a positive number
+            raise ValueError("Invalid request at index {}: all values must be positive numbers".format(i))
+
+    if not isinstance(resources, dict) or not confirm_type_of_key_and_value(resources, str, Number):
+        # Tests if the resources argument is a dictionary and if its keys and values are of the correct type
+        raise ValueError("Invalid type in resources dictionary")
+    
+    
+    total_requests = build_total_request(requests)
+    for key in total_requests:
+        if key not in resources or total_requests[key] > resources[key]:
+            flag = False
+    
+    return flag
+            
+    
+    
+    # TODO: Implement this function
+    # raise NotImplementedError("suggest_slots function has not been implemented yet")
+
+def confirm_type_of_key_and_value(dictionary, expected_key_type, expected_value_type):
+    flag = True
+    for key in dictionary:
+        if not isinstance(key, expected_key_type) or not isinstance(dictionary[key], expected_value_type):
+            flag = False
+    return flag
+    
+def build_total_request(requests):
+    total_requests = {}
+    for request in requests:
+        for key in request:
+            if key in total_requests:
+                total_requests[key] += request[key]
+            else:
+                total_requests[key] = request[key]
+    return total_requests
+
+Response 3:
+It’s a decent start for *basic* cases, but right now it’s **not very strong against bugs**, mainly because one of your key “type checks” will actually **crash at runtime** in normal Python.
+
+## 1) Biggest bug: `typing.Union` can’t be used with `isinstance`
+
+You set:
+
+```python
+Number = Union[int, float]
+```
+
+and later do:
+
+```python
+isinstance(dictionary[key], expected_value_type)
+```
+
+But `expected_value_type` is **`typing.Union[...]`**, and Python will raise:
+
+> `TypeError: isinstance() arg 2 must be a type or tuple of types`
+
+So your validator can fail *even for valid input*, depending on how it gets exercised.
+
+✅ Fix: use a runtime-checkable type/tuple:
+
+```python
+NumberTypes = (int, float)
+# or: from numbers import Real; NumberTypes = (Real,)
+```
+
+Then check with `isinstance(x, NumberTypes)`.
+
+---
+
+## 2) Your “positive” check doesn’t match what you wrote
+
+You wrote “must be positive numbers” but you check:
+
+```python
+any(v is None or v < 0 for v in vals)
+```
+
+That allows `0`. If you truly mean “strictly positive”, use `v <= 0`.
+
+Also: `None` is already blocked by your earlier type check (once it’s fixed), so you can simplify.
+
+---
+
+## 3) Missing validations that can turn into weird failures
+
+A few common edge cases:
+
+* If `requests` is `None` or not a list → `len(requests)` throws a `TypeError` (not your `ValueError`).
+* You don’t validate `resources` values are **non-negative** (a negative capacity is nonsense, but would pass your current check once fixed).
+* `bool` values pass `isinstance(True, int)` (because `bool` is a subclass of `int`). So `True` could be treated like `1` unless you explicitly reject it.
+* `float("nan")` and `float("inf")` pass `isinstance(v, float)` but break comparisons or feasibility logic in surprising ways.
+
+---
+
+## 4) Logic: feasible vs invalid input
+
+Right now, unknown resource keys in requests make feasibility `False`:
+
+```python
+if key not in resources ...
+    flag = False
+```
+
+That might be correct, but some specs prefer raising an error for “unknown resource name”. Just make sure it matches your lab handout.
+
+---
+
+# A more robust version (same structure, fewer bug traps)
+
+```python
+from numbers import Real
+from math import isfinite
+from typing import Dict, List
+
+def is_allocation_feasible(resources: Dict[str, Real], requests: List[Dict[str, Real]]) -> bool:
+    # Validate requests container
+    if not isinstance(requests, list):
+        raise ValueError("requests must be a list of dicts")
+
+    # Validate resources container
+    if not isinstance(resources, dict):
+        raise ValueError("resources must be a dict")
+
+    # Validate resources contents
+    for k, v in resources.items():
+        if not isinstance(k, str):
+            raise ValueError("resources keys must be str")
+        if not isinstance(v, Real) or isinstance(v, bool) or not isfinite(v) or v < 0:
+            raise ValueError("resources values must be finite, non-negative numbers")
+
+    totals: Dict[str, float] = {}
+
+    # Validate each request and accumulate
+    for i, req in enumerate(requests):
+        if not isinstance(req, dict):
+            raise ValueError(f"Invalid request at index {i}: must be a dict")
+        for k, v in req.items():
+            if not isinstance(k, str):
+                raise ValueError(f"Invalid key type in request {i}")
+            if not isinstance(v, Real) or isinstance(v, bool) or not isfinite(v) or v < 0:
+                raise ValueError(f"Invalid value in request {i}: must be finite, non-negative numbers")
+            totals[k] = totals.get(k, 0.0) + float(v)
+
+    # Feasibility check
+    for k, needed in totals.items():
+        if k not in resources or needed > resources[k]:
+            return False
+    return True
+```
+
+If your lab truly wants “no value is **<= 0**” instead of “no value is < 0”, change the `v < 0` checks to `v <= 0`.
+
+---
+
+If you paste the lab’s exact constraints (especially around “unknown resource keys” and whether `0` is allowed), I can tighten this to match the spec exactly.
+
+Prompt 4: 

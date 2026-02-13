@@ -1,5 +1,5 @@
-## Student Name:
-## Student ID: 
+## Student Name: Richard Balroop
+## Student ID: 216906349
 
 """
 Public test suite for the meeting slot suggestion exercise.
@@ -8,8 +8,15 @@ Students can run these tests locally to check basic correctness of their impleme
 The hidden test suite used for grading contains additional edge cases and will not be
 available to students.
 """
-from solution import is_allocation_feasible
 import pytest
+import sys, os
+
+here = os.path.abspath(__file__)            
+project_root = os.path.dirname(os.path.dirname(here))  
+src_path = os.path.join(project_root, "src")
+sys.path.insert(0, src_path)
+
+from solution import is_allocation_feasible
 
 
 def test_basic_feasible_single_resource():
@@ -45,4 +52,40 @@ def test_non_dict_request_raises():
     with pytest.raises(ValueError):
         is_allocation_feasible(resources, requests)
 
+def test_exact_capacity_is_feasible():
+    # Sum of requests equals capacity exactly -> feasible
+    resources = {"cpu": 10, "mem": 32}
+    requests = [{"cpu": 3, "mem": 12}, {"cpu": 7, "mem": 20}]
+    assert is_allocation_feasible(resources, requests) is True
+
+
+def test_empty_requests_is_feasible():
+    # No requests -> always feasible if resources are valid
+    resources = {"cpu": 5, "mem": 8}
+    requests = []
+    assert is_allocation_feasible(resources, requests) is True
+
+
+def test_float_amounts_supported():
+    # Floats should work (Number = int | float)
+    resources = {"cpu": 5.5}
+    requests = [{"cpu": 2.25}, {"cpu": 3.25}]
+    assert is_allocation_feasible(resources, requests) is True
+
+
+def test_non_dict_resources_raises():
+    # Structural validation: resources must be a dict
+    resources = ["cpu", 5]  # malformed
+    requests = [{"cpu": 1}]
+    with pytest.raises(ValueError):
+        is_allocation_feasible(resources, requests)
+
+
+def test_negative_request_amount_raises():
+    # Constraint: amounts required must be non-negative
+    resources = {"cpu": 5}
+    requests = [{"cpu": -1}]
+    with pytest.raises(ValueError):
+        is_allocation_feasible(resources, requests)
+        
 """TODO: Add at least 5 additional test cases to test your implementation."""
